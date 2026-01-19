@@ -1,7 +1,6 @@
 """
 Laboratory work.
 
-
 Working with Large Language Models.
 """
 
