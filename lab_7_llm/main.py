@@ -12,12 +12,12 @@ import pandas as pd
 # import pandas import DataFrame
 import torch
 from datasets import load_dataset
-from pandas.core.interchange.dataframe_protocol import DataFrame
+from pandas import DataFrame
 from torch.utils.data import Dataset
 from core_utils.llm.llm_pipeline import AbstractLLMPipeline
 from core_utils.llm.metrics import Metrics
 from core_utils.llm.raw_data_importer import AbstractRawDataImporter
-from core_utils.llm.raw_data_preprocessor import AbstractRawDataPreprocessor
+from core_utils.llm.raw_data_preprocessor import AbstractRawDataPreprocessor, ColumnNames
 from core_utils.llm.task_evaluator import AbstractTaskEvaluator
 from core_utils.llm.time_decorator import report_time
 
@@ -35,9 +35,10 @@ class RawDataImporter(AbstractRawDataImporter):
         Raises:
             TypeError: In case of downloaded dataset is not pd.DataFrame
         """
-        self._raw_data = load_dataset(self._hf_name, split='train').to_pandas()
+        dataset = load_dataset(self._hf_name, split='train')
+        self._raw_data = dataset.to_pandas()
 
-        if not isinstance(self._raw_data, DataFrame):
+        if not isinstance(self._raw_data, pd.DataFrame):
             raise TypeError("Downloaded dataset is not pd.DataFrame")
 
 
@@ -53,6 +54,17 @@ class RawDataPreprocessor(AbstractRawDataPreprocessor):
         Returns:
             dict: Dataset key properties
         """
+        source_column = "neutral"
+        text_data = self._raw_data[source_column].dropna()
+
+        return {
+            "dataset_number_of_samples": len(self._raw_data),
+            "dataset_columns": len(self._raw_data.columns),
+            "dataset_duplicates": int(self._raw_data.duplicated().sum()),
+            "dataset_empty_rows": int(self._raw_data.isnull().any(axis=1).sum()),
+            "dataset_sample_min_len": int(text_data.str.len().min()) if not text_data.empty else 0,
+            "dataset_sample_max_len": int(text_data.str.len().max()) if not text_data.empty else 0
+        }
 
     @report_time
     def transform(self) -> None:
@@ -60,9 +72,9 @@ class RawDataPreprocessor(AbstractRawDataPreprocessor):
         Apply preprocessing transformations to the raw dataset.
         """
         raw_data_df = self._raw_data.rename(
-            columns={"toxic": "target", "comment": "source"}
-        )
-        raw_data_df["target"] = raw_data_df["target"].replace({False: 0, True: 1}, inplace=True)
+            columns={"toxic": ColumnNames.TARGET.value, "neutral": ColumnNames.SOURCE.value}
+        ).drop_duplicates()
+        raw_data_df[ColumnNames.TARGET.value] = raw_data_df[ColumnNames.SOURCE.value].replace({False: 0, True: 1})
         self._data = raw_data_df
         self._data.reset_index(drop=True)
 
@@ -120,7 +132,7 @@ class LLMPipeline(AbstractLLMPipeline):
     """
 
     def __init__(
-            self, model_name: str, dataset: TaskDataset, max_length: int, batch_size: int, device: str
+        self, model_name: str, dataset: TaskDataset, max_length: int, batch_size: int, device: str
     ) -> None:
         """
         Initialize an instance.

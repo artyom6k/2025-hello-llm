@@ -16,9 +16,13 @@ def main() -> None:
     """
     path_to_settings = pathlib.Path(__file__).parent / 'settings.json'
     settings = LabSettings(path_to_settings)
+
     importer = RawDataImporter(settings.parameters.dataset)
     importer.obtain()
+
     preprocessor = RawDataPreprocessor(importer.raw_data)
+    analysis_result = preprocessor.analyze()
+    result = analysis_result
 
     assert result is not None, "Demo does not work correctly"
 
